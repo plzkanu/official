@@ -13,15 +13,24 @@ const venvPython = isWin
   ? join(venvDir, "Scripts", "python.exe")
   : join(venvDir, "bin", "python");
 
+/** Replit 등에서 PIP_USER=1 이면 venv 안 pip가 --user 설치를 시도해 실패함 */
+function pipEnv() {
+  const env = { ...process.env };
+  delete env.PIP_USER;
+  delete env.PIP_USER_SITE;
+  return env;
+}
+
 if (!existsSync(venvPython)) {
   console.log(`[install-python-deps] venv 생성: ${venvDir}`);
-  execSync(`${pythonCmd} -m venv ${venvDir}`, { stdio: "inherit" });
+  execSync(`${pythonCmd} -m venv ${venvDir}`, { stdio: "inherit", env: pipEnv() });
 }
 
 console.log("[install-python-deps] pip install backend/requirements.txt");
-execSync(`${venvPython} -m pip install --upgrade pip`, { stdio: "inherit" });
-execSync(`${venvPython} -m pip install -r backend/requirements.txt`, {
-  stdio: "inherit",
-});
+const runPip = (args) =>
+  execSync(`${venvPython} -m pip ${args}`, { stdio: "inherit", env: pipEnv() });
+
+runPip("install --upgrade pip");
+runPip("install -r backend/requirements.txt");
 
 console.log("[install-python-deps] 완료");
