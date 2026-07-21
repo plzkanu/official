@@ -205,11 +205,11 @@ export default function UserManagementPage() {
         title="사용자 목록"
         description="역할별 권한: 관리자 · 접수담당 · 경영지원팀장 · 담당부서"
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-slate-500">
             {users.length.toLocaleString('ko-KR')}명
           </span>
-          <button type="button" onClick={openCreate} className="btn-primary">
+          <button type="button" onClick={openCreate} className="btn-primary w-full sm:w-auto">
             사용자 추가
           </button>
         </div>
@@ -221,7 +221,64 @@ export default function UserManagementPage() {
             등록된 사용자가 없습니다.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="space-y-3 md:hidden">
+              {users.map((user) => (
+                <div key={user.id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800">{user.name}</p>
+                      <p className="mt-0.5 font-mono text-xs text-slate-500">{user.username}</p>
+                    </div>
+                    {user.is_active ? (
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                        활성
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-600">
+                        비활성
+                      </span>
+                    )}
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <div>
+                      <dt className="text-slate-400">역할</dt>
+                      <dd className="mt-0.5">
+                        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[#004b87]">
+                          {ROLE_LABELS[user.role]}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-slate-400">소속부서</dt>
+                      <dd className="mt-0.5 text-slate-700">
+                        {user.department_id ? deptMap[user.department_id] ?? '-' : '-'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(user)}
+                      className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                    >
+                      수정
+                    </button>
+                    {user.id !== currentUser?.id && (
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(user)}
+                        className="btn-destructive"
+                      >
+                        {user.is_active ? '비활성화' : '활성화'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -283,7 +340,8 @@ export default function UserManagementPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </CardPanel>
 

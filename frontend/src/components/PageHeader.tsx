@@ -7,7 +7,7 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, description }: PageHeaderProps) {
   return (
-    <div className="mb-6">
+    <div className="mb-4 sm:mb-6">
       <h1 className="page-title">{title}</h1>
       {description && <p className="page-subtitle">{description}</p>}
     </div>

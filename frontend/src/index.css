@@ -36,10 +36,10 @@ body {
     @apply mb-1.5 block text-sm font-medium text-slate-700;
   }
   .page-title {
-    @apply text-2xl font-bold text-[#004b87];
+    @apply text-xl font-bold text-[#004b87] sm:text-2xl;
   }
   .page-subtitle {
-    @apply mt-2 text-sm text-slate-600;
+    @apply mt-1.5 text-sm text-slate-600 sm:mt-2;
   }
   .banner-error {
     @apply rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600;
@@ -54,9 +54,9 @@ body {
     @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
   .card-panel-header {
-    @apply border-b border-slate-100 px-5 py-4;
+    @apply border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4;
   }
   .card-panel-body {
-    @apply px-5 py-5;
+    @apply px-4 py-4 sm:px-5 sm:py-5;
   }
 }

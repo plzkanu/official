@@ -180,11 +180,11 @@ export default function DepartmentManagementPage() {
         title="부서 목록"
         description="공문 수취 확인 시 배정할 수 있는 부서입니다. 알림 메일을 여러 명에게 지정할 수 있습니다."
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-slate-500">
             {departments.length.toLocaleString('ko-KR')}건
           </span>
-          <button type="button" onClick={openCreate} className="btn-primary">
+          <button type="button" onClick={openCreate} className="btn-primary w-full sm:w-auto">
             부서 추가
           </button>
         </div>
@@ -196,7 +196,46 @@ export default function DepartmentManagementPage() {
             등록된 부서가 없습니다. 부서 추가 버튼을 눌러 등록해 주세요.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="space-y-3 md:hidden">
+              {departments.map((dept) => (
+                <div key={dept.id} className="rounded-lg border border-slate-200 p-4">
+                  <p className="font-medium text-slate-800">{dept.name}</p>
+                  <div className="mt-2">
+                    <p className="text-xs text-slate-400">알림 메일</p>
+                    {dept.emails.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5">
+                        {dept.emails.map((email) => (
+                          <li key={email} className="break-all text-sm text-slate-600">
+                            {email}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-500">-</p>
+                    )}
+                  </div>
+                  <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(dept)}
+                      className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(dept)}
+                      className="btn-destructive"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -244,7 +283,8 @@ export default function DepartmentManagementPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </CardPanel>
 
