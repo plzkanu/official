@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.venv/
+backend/venv/
+
+# Environment / secrets
+.env
+.env.*
+backend/.env
+!.env.example
+!backend/.env.example
+
+# Build / cache
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.pytest_cache/
+.mypy_cache/
+
+# Runtime data
+*.db
+backend/uploads/*
+backend/receipts/*
+backend/assets/digital_stamp.png
+backend/assets/digital_stamp.meta
+!backend/uploads/.gitkeep
+!backend/receipts/.gitkeep
+!backend/assets/.gitkeep
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,22 @@
+run = "npm run dev:frontend"
+entrypoint = "package.json"
+hidden = [".config", "node_modules", "frontend/node_modules", "frontend/dist", ".venv", "backend/venv"]
+
+modules = ["nodejs-22", "python3"]
+onBoot = "node scripts/install-python-deps.mjs"
+
+[nix]
+channel = "stable-24_11"
+packages = ["python312", "python312Packages.pip"]
+
+[deployment]
+build = ["npm", "run", "build"]
+run = ["npm", "run", "start"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[env]
+STATIC_DIR = "../frontend/dist"

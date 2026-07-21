@@ -1,0 +1,11 @@
+{
+  "name": "official-doc",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm run dev --prefix frontend",
+    "prebuild": "node scripts/install-python-deps.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/start-production.mjs"
+  }
+}
