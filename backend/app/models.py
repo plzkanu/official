@@ -37,7 +37,7 @@ class DocumentStatus(str, enum.Enum):
 
 
 class Department(Base):
-    __tablename__ = "departments"
+    __tablename__ = "od_departments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -48,14 +48,14 @@ class Department(Base):
 
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "od_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
-    department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("departments.id"))
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False), nullable=False)
+    department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("od_departments.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     department: Mapped[Optional["Department"]] = relationship(back_populates="users")
@@ -74,34 +74,34 @@ class User(Base):
 
 
 class Document(Base):
-    __tablename__ = "documents"
+    __tablename__ = "od_documents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     reception_number: Mapped[Optional[str]] = mapped_column(String(20), unique=True, index=True)
-    channel: Mapped[Channel] = mapped_column(Enum(Channel), nullable=False)
+    channel: Mapped[Channel] = mapped_column(Enum(Channel, native_enum=False), nullable=False)
     sender: Mapped[str] = mapped_column(String(200), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     doc_number: Mapped[Optional[str]] = mapped_column(String(100))
-    input_reception_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    input_reception_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     file_path: Mapped[Optional[str]] = mapped_column(String(500))
     original_filename: Mapped[Optional[str]] = mapped_column(String(255))
 
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus),
+        Enum(DocumentStatus, native_enum=False),
         default=DocumentStatus.PENDING_RECEPTION,
     )
-    registered_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    received_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
-    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    assigned_department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("departments.id"))
-    assigned_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
-    deadline: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    registered_by_id: Mapped[int] = mapped_column(ForeignKey("od_users.id"), nullable=False)
+    received_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("od_users.id"))
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    assigned_department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("od_departments.id"))
+    assigned_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("od_users.id"))
+    deadline: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     memo: Mapped[Optional[str]] = mapped_column(Text)
     receipt_path: Mapped[Optional[str]] = mapped_column(String(500))
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
@@ -122,7 +122,7 @@ class Document(Base):
 
 
 class ReceptionCounter(Base):
-    __tablename__ = "reception_counters"
+    __tablename__ = "od_reception_counters"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     year: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)

@@ -1,35 +1,11 @@
 import os
 
-from sqlalchemy import inspect, text
-
 from app.auth import get_password_hash
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import Department, User, UserRole
 from app.utils.department_emails import serialize_emails
 from app.services.stamp import ensure_stamp_dir
-
-
-def migrate_department_emails(db) -> None:
-    inspector = inspect(engine)
-    if "departments" not in inspector.get_table_names():
-        return
-
-    columns = {col["name"] for col in inspector.get_columns("departments")}
-    if "emails" not in columns:
-        db.execute(text("ALTER TABLE departments ADD COLUMN emails TEXT DEFAULT '[]'"))
-        db.commit()
-
-    if "email" in columns:
-        rows = db.execute(text("SELECT id, email, emails FROM departments")).fetchall()
-        for row in rows:
-            row_id, legacy_email, emails = row
-            if legacy_email and (not emails or emails == "[]"):
-                db.execute(
-                    text("UPDATE departments SET emails = :emails WHERE id = :id"),
-                    {"emails": serialize_emails([legacy_email]), "id": row_id},
-                )
-        db.commit()
 
 
 def init_db():
@@ -41,8 +17,6 @@ def init_db():
     db = SessionLocal()
 
     try:
-        migrate_department_emails(db)
-
         if db.query(User).count() == 0:
             departments = [
                 Department(

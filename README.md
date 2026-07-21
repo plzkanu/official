@@ -16,7 +16,7 @@
 
 ## 기술 스택
 
-- **Backend**: Python FastAPI, SQLAlchemy, SQLite
+- **Backend**: Python FastAPI, SQLAlchemy, Supabase PostgreSQL
 - **Frontend**: React, TypeScript, Tailwind CSS, Vite
 - **PDF**: ReportLab
 - **메일**: aiosmtplib

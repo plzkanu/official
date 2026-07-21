@@ -79,7 +79,24 @@ app.include_router(admin.router)
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "production": settings.is_production}
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    db_ok = False
+    db_error: str | None = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception as exc:
+        db_error = str(exc).split("\n")[0][:200]
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "production": settings.is_production,
+        "database": "connected" if db_ok else "error",
+        "database_error": db_error,
+    }
 
 
 _setup_static_routes(app)
