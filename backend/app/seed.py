@@ -5,13 +5,14 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import Department, User, UserRole
 from app.utils.department_emails import serialize_emails
-from app.services.stamp import ensure_stamp_dir
+from app.services.stamp import ensure_stamp_dir, migrate_stamp_from_filesystem
 
 
 def init_db():
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.receipt_dir, exist_ok=True)
     ensure_stamp_dir()
+    migrate_stamp_from_filesystem()
 
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

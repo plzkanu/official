@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
 from app.auth import get_current_user, require_roles
 from app.models import User, UserRole
@@ -25,10 +25,13 @@ async def get_digital_stamp_info(_: User = Depends(require_roles(UserRole.ADMIN)
 async def get_digital_stamp_image(_: User = Depends(get_current_user)):
     if not stamp_service.stamp_exists():
         raise HTTPException(status_code=404, detail="등록된 디지털 접수도장이 없습니다.")
-    return FileResponse(
-        stamp_service.get_stamp_path(),
+    content = stamp_service.get_stamp_bytes()
+    if not content:
+        raise HTTPException(status_code=404, detail="등록된 디지털 접수도장이 없습니다.")
+    return Response(
+        content=content,
         media_type="image/png",
-        filename=stamp_service.get_stamp_filename(),
+        headers={"Content-Disposition": f'inline; filename="{stamp_service.get_stamp_filename()}"'},
     )
 
 
@@ -52,11 +55,10 @@ async def upload_digital_stamp(
         raise HTTPException(status_code=400, detail="파일 크기는 5MB 이하여야 합니다.")
 
     try:
-        stamp_service.save_stamp_image(content)
+        updated_at = stamp_service.save_stamp_image(content, file.filename)
     except Exception as e:
         raise HTTPException(status_code=400, detail="이미지 파일을 읽을 수 없습니다.") from e
 
-    updated_at = stamp_service.write_stamp_updated_at()
     return DigitalStampResponse(
         configured=True,
         filename=stamp_service.get_stamp_filename(),

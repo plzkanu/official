@@ -117,7 +117,7 @@ export default function StampSettingsPage() {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="디지털 접수도장 관리"
-        description="공문 수취 확인 시 첨부 공문 첫 페이지에 날인되는 디지털 접수도장 이미지를 등록하거나 변경합니다."
+        description="공문 수취 확인 시 첨부 공문 첫 페이지에 날인되는 디지털 접수도장 이미지를 등록하거나 변경합니다. 등록된 도장은 데이터베이스에 저장되어 서버 재시작·재배포 후에도 유지됩니다."
       />
 
       {info && <div className="banner-success mb-4">{info}</div>}

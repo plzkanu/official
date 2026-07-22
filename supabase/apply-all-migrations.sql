@@ -58,4 +58,14 @@ ALTER TABLE od_users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE od_documents DISABLE ROW LEVEL SECURITY;
 ALTER TABLE od_reception_counters DISABLE ROW LEVEL SECURITY;
 
+-- 디지털 접수도장 (002_od_digital_stamp.sql)
+CREATE TABLE IF NOT EXISTS od_digital_stamp (
+  id          INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  image_data  BYTEA NOT NULL,
+  filename    VARCHAR(255) NOT NULL DEFAULT 'digital_stamp.png',
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE od_digital_stamp DISABLE ROW LEVEL SECURITY;
+
 NOTIFY pgrst, 'reload schema';

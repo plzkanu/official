@@ -8,9 +8,10 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from app.services.stamp import get_stamp_path, stamp_exists
+from app.services.stamp import get_stamp_bytes, stamp_exists
 
 FONT_REGISTERED = False
 STAMPABLE_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp"}
@@ -191,16 +192,22 @@ def _create_pdf_overlay(
 
     if stamp_exists():
         try:
-            c.drawImage(
-                get_stamp_path(),
-                x,
-                y,
-                width=stamp_size,
-                height=stamp_size,
-                preserveAspectRatio=True,
-                mask="auto",
-            )
-            _draw_stamp_text_pdf(c, x, y, stamp_size, reception_number, received_at)
+            stamp_bytes = get_stamp_bytes()
+            if stamp_bytes:
+                c.drawImage(
+                    ImageReader(io.BytesIO(stamp_bytes)),
+                    x,
+                    y,
+                    width=stamp_size,
+                    height=stamp_size,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+                _draw_stamp_text_pdf(c, x, y, stamp_size, reception_number, received_at)
+            else:
+                _draw_default_pdf_stamp(
+                    c, x + stamp_size / 2, y + stamp_size / 2, reception_number, received_at
+                )
         except Exception:
             _draw_default_pdf_stamp(c, x + stamp_size / 2, y + stamp_size / 2, reception_number, received_at)
     else:
@@ -296,10 +303,17 @@ def _stamp_image(input_path: str, reception_number: str, received_at: datetime) 
     draw = ImageDraw.Draw(overlay)
 
     if stamp_exists():
-        stamp_img = Image.open(get_stamp_path()).convert("RGBA")
-        stamp_img = stamp_img.resize((stamp_size, stamp_size), Image.Resampling.LANCZOS)
-        overlay.paste(stamp_img, (x, y), stamp_img)
-        _draw_stamp_text_image(draw, x, y, stamp_size, reception_number, received_at)
+        stamp_bytes = get_stamp_bytes()
+        if stamp_bytes:
+            stamp_img = Image.open(io.BytesIO(stamp_bytes)).convert("RGBA")
+            stamp_img = stamp_img.resize((stamp_size, stamp_size), Image.Resampling.LANCZOS)
+            overlay.paste(stamp_img, (x, y), stamp_img)
+            _draw_stamp_text_image(draw, x, y, stamp_size, reception_number, received_at)
+        else:
+            _draw_default_image_stamp(
+                draw, x + stamp_size // 2, y + stamp_size // 2, stamp_size // 2 - 4,
+                reception_number, received_at,
+            )
     else:
         _draw_default_image_stamp(
             draw, x + stamp_size // 2, y + stamp_size // 2, stamp_size // 2 - 4,

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
 )
@@ -127,3 +128,12 @@ class ReceptionCounter(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     year: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     last_number: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DigitalStamp(Base):
+    __tablename__ = "od_digital_stamp"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    image_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), default="digital_stamp.png")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
