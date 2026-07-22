@@ -1,10 +1,19 @@
-import os
+import re
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 _ENV_FILE = _BACKEND_DIR / ".env"
+
+
+def _derive_supabase_url(database_url: str) -> str:
+    match = re.search(r"postgres\.([a-z0-9]+):", database_url)
+    if match:
+        return f"https://{match.group(1)}.supabase.co"
+    return ""
+
 
 def _parse_ssl_verify(value: str | None) -> bool:
     if value is None:
@@ -14,8 +23,14 @@ def _parse_ssl_verify(value: str | None) -> bool:
 
 
 class Settings(BaseSettings):
-    secret_key: str = "dev-secret-key-change-in-production"
+    secret_key: str = Field(
+        default="dev-secret-key-change-in-production",
+        validation_alias=AliasChoices("SECRET_KEY", "SESSION_SECRET"),
+    )
     database_url: str = ""
+    supabase_url: str = ""
+    supabase_service_role_key: str = ""
+    storage_bucket: str = "document-attachments"
     upload_dir: str = "./uploads"
     receipt_dir: str = "./receipts"
     stamp_dir: str = "./assets"
@@ -31,6 +46,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "noreply@company.com"
     smtp_use_tls: bool = True
+    supabase_ssl_verify: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else None,
@@ -39,11 +55,18 @@ class Settings(BaseSettings):
 
     @property
     def database_ssl_verify(self) -> bool:
-        return _parse_ssl_verify(os.environ.get("SUPABASE_SSL_VERIFY"))
+        return _parse_ssl_verify(self.supabase_ssl_verify)
 
     @property
     def is_production(self) -> bool:
         return bool(self.static_dir.strip())
+
+    @property
+    def effective_supabase_url(self) -> str:
+        explicit = self.supabase_url.strip()
+        if explicit:
+            return explicit.rstrip("/")
+        return _derive_supabase_url(self.database_url.strip())
 
     @property
     def cors_origin_list(self) -> list[str]:

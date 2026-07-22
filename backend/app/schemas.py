@@ -133,6 +133,7 @@ class DocumentResponse(BaseModel):
     deadline: datetime | None
     memo: str | None
     has_receipt: bool = False
+    attachment_available: bool = False
     created_at: datetime
     updated_at: datetime
 

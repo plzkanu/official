@@ -68,4 +68,20 @@ CREATE TABLE IF NOT EXISTS od_digital_stamp (
 
 ALTER TABLE od_digital_stamp DISABLE ROW LEVEL SECURITY;
 
+-- 첨부·날인본 Storage 버킷 (003_od_storage_bucket.sql)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'document-attachments',
+  'document-attachments',
+  false,
+  52428800,
+  NULL
+)
+ON CONFLICT (id) DO UPDATE SET
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = NULL;
+
+-- 004: 기존 버킷 MIME 제한 해제 (이미 생성된 경우)
+UPDATE storage.buckets SET allowed_mime_types = NULL WHERE id = 'document-attachments';
+
 NOTIFY pgrst, 'reload schema';

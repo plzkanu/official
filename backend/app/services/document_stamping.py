@@ -244,7 +244,9 @@ def _draw_default_pdf_stamp(
 
 
 def _stamp_pdf(input_path: str, reception_number: str, received_at: datetime) -> str:
-    reader = PdfReader(input_path)
+    with open(input_path, "rb") as source:
+        pdf_bytes = source.read()
+    reader = PdfReader(io.BytesIO(pdf_bytes))
     if not reader.pages:
         raise ValueError("PDF 페이지가 없습니다.")
 
@@ -291,7 +293,8 @@ def _draw_default_image_stamp(
 
 
 def _stamp_image(input_path: str, reception_number: str, received_at: datetime) -> str:
-    base = Image.open(input_path).convert("RGBA")
+    with Image.open(input_path) as opened:
+        base = opened.convert("RGBA")
     width, height = base.size
 
     margin = max(int(min(width, height) * 0.03), 24)

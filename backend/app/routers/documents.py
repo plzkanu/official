@@ -1,15 +1,14 @@
 import os
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 
-import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user, require_roles
-from app.config import settings
 from app.database import get_db
 from app.models import Channel, Department, Document, DocumentStatus, User, UserRole
 from app.schemas import (
@@ -19,12 +18,112 @@ from app.schemas import (
     DocumentResponse,
     UserBrief,
 )
-from app.services.email_service import send_department_notification
-from app.utils.department_emails import parse_emails_json
-from app.services.numbering import generate_reception_number
 from app.services.document_stamping import is_stampable, stamp_document_first_page
+from app.services.email_service import send_department_notification
+from app.services import file_storage
+from app.services.numbering import generate_reception_number
+from app.utils.datetime_utils import ensure_utc, utc_now
+from app.utils.department_emails import parse_emails_json
+from app.utils.http_headers import content_disposition
 
 router = APIRouter(prefix="/api/documents", tags=["공문접수"])
+
+
+def _parse_input_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.strptime(value, "%Y-%m-%d")
+
+
+def _load_document(db: Session, doc_id: int) -> Document | None:
+    return (
+        db.query(Document)
+        .options(
+            joinedload(Document.registered_by_user),
+            joinedload(Document.received_by_user),
+            joinedload(Document.assigned_department),
+            joinedload(Document.assigned_user),
+        )
+        .filter(Document.id == doc_id)
+        .first()
+    )
+
+
+def _can_edit_document(doc: Document, user: User) -> bool:
+    if doc.status != DocumentStatus.PENDING_RECEPTION:
+        return False
+    return doc.registered_by_id == user.id or user.role == UserRole.ADMIN
+
+
+def _resolve_attachment_key(doc: Document) -> str | None:
+    if doc.file_path and not file_storage.is_storage_key(doc.file_path):
+        return None
+
+    if doc.file_path and file_storage.is_storage_key(doc.file_path):
+        try:
+            if file_storage.exists(doc.file_path):
+                return doc.file_path
+        except file_storage.FileStorageError:
+            pass
+
+    try:
+        keys = file_storage.list_document_keys(doc.id)
+    except file_storage.FileStorageError:
+        return None
+
+    if not keys:
+        return None
+
+    if doc.status != DocumentStatus.PENDING_RECEPTION:
+        stamped = [key for key in keys if "/stamped_" in key]
+        if stamped:
+            return sorted(stamped)[-1]
+
+    originals = [key for key in keys if "/stamped_" not in key]
+    if originals:
+        return sorted(originals)[-1]
+
+    return None
+
+
+def _attachment_available(doc: Document) -> bool:
+    return _resolve_attachment_key(doc) is not None
+
+
+def _has_receipt(doc: Document) -> bool:
+    if not doc.reception_number or doc.status == DocumentStatus.PENDING_RECEPTION:
+        return False
+    key = _resolve_attachment_key(doc)
+    return bool(key and "/stamped_" in key)
+
+
+def _attachment_response(doc: Document, *, inline: bool = True) -> Response:
+    storage_key = _resolve_attachment_key(doc)
+    if not storage_key:
+        detail = (
+            "Storage에 첨부파일이 없습니다. 문서를 삭제 후 다시 등록해 주세요."
+            if doc.status == DocumentStatus.PENDING_RECEPTION
+            else "날인본 파일을 찾을 수 없습니다."
+        )
+        raise HTTPException(status_code=404, detail=detail)
+    try:
+        content = file_storage.download(storage_key)
+    except file_storage.FileNotFoundStorageError as exc:
+        raise HTTPException(status_code=404, detail="첨부파일을 찾을 수 없습니다.") from exc
+    except file_storage.FileStorageError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    filename = doc.original_filename or Path(storage_key).name or "attachment"
+    disposition = "inline" if inline else "attachment"
+    media_type = file_storage.guess_content_type(storage_key)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": content_disposition(disposition, filename)},
+    )
 
 
 def _to_response(doc: Document) -> DocumentResponse:
@@ -53,12 +152,8 @@ def _to_response(doc: Document) -> DocumentResponse:
         else None,
         deadline=doc.deadline,
         memo=doc.memo,
-        has_receipt=bool(
-            doc.reception_number
-            and doc.file_path
-            and os.path.exists(doc.file_path)
-            and doc.status != DocumentStatus.PENDING_RECEPTION
-        ),
+        has_receipt=_has_receipt(doc),
+        attachment_available=_attachment_available(doc),
         created_at=doc.created_at,
         updated_at=doc.updated_at,
     )
@@ -76,25 +171,16 @@ async def register_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.REGISTRAR, UserRole.ADMIN, UserRole.TEAM_LEADER)),
 ):
-    file_path = None
     original_filename = None
+    file_content = None
 
     if file and file.filename:
-        os.makedirs(settings.upload_dir, exist_ok=True)
-        ext = os.path.splitext(file.filename)[1]
-        saved_name = f"{uuid.uuid4().hex}{ext}"
-        file_path = os.path.join(settings.upload_dir, saved_name)
         original_filename = file.filename
-        content = await file.read()
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
+        file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=400, detail="빈 파일은 업로드할 수 없습니다.")
 
-    parsed_date = None
-    if input_reception_date:
-        try:
-            parsed_date = datetime.fromisoformat(input_reception_date.replace("Z", "+00:00"))
-        except ValueError:
-            parsed_date = datetime.strptime(input_reception_date, "%Y-%m-%d")
+    parsed_date = _parse_input_date(input_reception_date)
 
     doc = Document(
         channel=channel,
@@ -102,26 +188,85 @@ async def register_document(
         title=title,
         doc_number=doc_number,
         input_reception_date=parsed_date,
-        file_path=file_path,
+        file_path=None,
         original_filename=original_filename,
         memo=memo,
         status=DocumentStatus.PENDING_RECEPTION,
         registered_by_id=current_user.id,
     )
     db.add(doc)
+    db.flush()
+
+    if file_content and original_filename:
+        ext = Path(original_filename).suffix
+        storage_key = file_storage.build_document_key(doc.id, f"{uuid.uuid4().hex}{ext}")
+        try:
+            file_storage.upload_and_verify(storage_key, file_content)
+        except file_storage.FileStorageError as exc:
+            db.rollback()
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        doc.file_path = storage_key
+
     db.commit()
     db.refresh(doc)
-    doc = (
-        db.query(Document)
-        .options(
-            joinedload(Document.registered_by_user),
-            joinedload(Document.received_by_user),
-            joinedload(Document.assigned_department),
-            joinedload(Document.assigned_user),
-        )
-        .filter(Document.id == doc.id)
-        .first()
-    )
+    doc = _load_document(db, doc.id)
+    return _to_response(doc)
+
+
+@router.patch("/{doc_id}", response_model=DocumentResponse)
+async def update_document(
+    doc_id: int,
+    channel: Channel = Form(...),
+    sender: str = Form(...),
+    title: str = Form(...),
+    doc_number: str | None = Form(None),
+    input_reception_date: str | None = Form(None),
+    memo: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+    if not _can_edit_document(doc, current_user):
+        if doc.status != DocumentStatus.PENDING_RECEPTION:
+            raise HTTPException(status_code=400, detail="수취 확인 전 공문만 수정할 수 있습니다.")
+        raise HTTPException(status_code=403, detail="본인이 등록한 공문만 수정할 수 있습니다.")
+
+    doc.channel = channel
+    doc.sender = sender.strip()
+    doc.title = title.strip()
+    doc.doc_number = doc_number.strip() if doc_number and doc_number.strip() else None
+    doc.input_reception_date = _parse_input_date(input_reception_date)
+    doc.memo = memo.strip() if memo and memo.strip() else None
+
+    new_storage_key: str | None = None
+    if file and file.filename:
+        file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=400, detail="빈 파일은 업로드할 수 없습니다.")
+        ext = Path(file.filename).suffix
+        new_storage_key = file_storage.build_document_key(doc.id, f"{uuid.uuid4().hex}{ext}")
+        try:
+            file_storage.upload_and_verify(new_storage_key, file_content)
+        except file_storage.FileStorageError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        doc.file_path = new_storage_key
+        doc.original_filename = file.filename
+
+    db.commit()
+    db.refresh(doc)
+
+    if new_storage_key:
+        try:
+            for key in file_storage.list_document_keys(doc.id):
+                if key != new_storage_key:
+                    file_storage.delete(key)
+        except file_storage.FileStorageError:
+            pass
+
+    doc = _load_document(db, doc.id)
     return _to_response(doc)
 
 
@@ -150,7 +295,14 @@ async def receive_document(
     if not department:
         raise HTTPException(status_code=404, detail="담당부서를 찾을 수 없습니다.")
 
-    received_at = datetime.utcnow()
+    storage_key = _resolve_attachment_key(doc)
+    if doc.original_filename and not storage_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Storage에 첨부파일이 없어 접수할 수 없습니다. 관리자가 문서를 삭제한 뒤 다시 등록해 주세요.",
+        )
+
+    received_at = utc_now()
     reception_number = generate_reception_number(db, received_at.year)
 
     doc.reception_number = reception_number
@@ -158,33 +310,61 @@ async def receive_document(
     doc.received_by_id = current_user.id
     doc.assigned_department_id = data.assigned_department_id
     doc.assigned_user_id = data.assigned_user_id
-    doc.deadline = data.deadline
+    doc.deadline = ensure_utc(data.deadline)
     if data.memo:
         doc.memo = data.memo
     doc.status = DocumentStatus.RECEIVED
 
-    if doc.file_path and os.path.exists(doc.file_path):
-        if is_stampable(doc.file_path):
-            try:
-                old_path = doc.file_path
-                stamped_path = stamp_document_first_page(
-                    old_path,
-                    reception_number=reception_number,
-                    received_at=received_at,
-                )
-                if stamped_path:
-                    doc.file_path = stamped_path
-                    if stamped_path != old_path and os.path.exists(old_path):
-                        os.remove(old_path)
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"공문 날인 처리 중 오류가 발생했습니다: {exc}",
-                ) from exc
+    storage_keys_to_delete: list[str] = []
+
+    if storage_key:
+        try:
+            with file_storage.temp_local_file(storage_key) as local_path:
+                if is_stampable(local_path):
+                    old_key = storage_key
+                    stamped_local = stamp_document_first_page(
+                        local_path,
+                        reception_number=reception_number,
+                        received_at=received_at.replace(tzinfo=None),
+                    )
+                    if stamped_local:
+                        safe_no = reception_number.replace("-", "_")
+                        stamped_ext = Path(stamped_local).suffix
+                        new_key = file_storage.build_document_key(
+                            doc.id,
+                            f"stamped_{safe_no}{stamped_ext}",
+                        )
+                        file_storage.upload_local_file(new_key, stamped_local)
+                        doc.file_path = new_key
+                        if new_key != old_key:
+                            storage_keys_to_delete.append(old_key)
+                        if stamped_local != local_path and os.path.exists(stamped_local):
+                            os.remove(stamped_local)
+        except file_storage.FileNotFoundStorageError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Storage에 첨부파일이 없어 접수할 수 없습니다. 관리자가 문서를 삭제한 뒤 다시 등록해 주세요.",
+            ) from exc
+        except file_storage.FileStorageError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"공문 날인 처리 중 오류가 발생했습니다: {exc}",
+            ) from exc
 
     doc.receipt_path = None
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"접수 정보 저장 중 오류가 발생했습니다: {exc}",
+        ) from exc
 
-    db.commit()
+    for old_key in storage_keys_to_delete:
+        file_storage.delete(old_key)
 
     notification_emails = parse_emails_json(department.emails)
     if notification_emails:
@@ -254,11 +434,12 @@ async def list_documents(
     if date_to:
         query = query.filter(Document.received_at <= date_to)
     if deadline_soon:
-        threshold = datetime.utcnow() + timedelta(days=3)
+        now = utc_now()
+        threshold = now + timedelta(days=3)
         query = query.filter(
             Document.deadline.isnot(None),
             Document.deadline <= threshold,
-            Document.deadline >= datetime.utcnow(),
+            Document.deadline >= now,
             Document.status == DocumentStatus.RECEIVED,
         )
 
@@ -273,7 +454,7 @@ async def get_stats(db: Session = Depends(get_db), current_user: User = Depends(
         query = query.filter(Document.assigned_department_id == current_user.department_id)
 
     docs = query.all()
-    now = datetime.utcnow()
+    now = utc_now()
     threshold = now + timedelta(days=3)
 
     return DashboardStats(
@@ -284,14 +465,16 @@ async def get_stats(db: Session = Depends(get_db), current_user: User = Depends(
             1
             for d in docs
             if d.deadline
-            and d.deadline <= threshold
-            and d.deadline >= now
+            and ensure_utc(d.deadline) <= threshold
+            and ensure_utc(d.deadline) >= now
             and d.status == DocumentStatus.RECEIVED
         ),
         overdue=sum(
             1
             for d in docs
-            if d.deadline and d.deadline < now and d.status == DocumentStatus.RECEIVED
+            if d.deadline
+            and ensure_utc(d.deadline) < now
+            and d.status == DocumentStatus.RECEIVED
         ),
     )
 
@@ -318,6 +501,28 @@ async def get_document(
     return _to_response(doc)
 
 
+@router.delete("/{doc_id}")
+async def delete_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.ADMIN)),
+):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+    file_path = doc.file_path
+    db.delete(doc)
+    db.commit()
+
+    try:
+        file_storage.delete_all_for_document(doc_id, file_path)
+    except file_storage.FileStorageError:
+        pass
+
+    return {"message": "공문이 삭제되었습니다."}
+
+
 @router.get("/{doc_id}/receipt")
 async def download_receipt(
     doc_id: int,
@@ -326,14 +531,11 @@ async def download_receipt(
 ):
     """하위 호환: 날인된 첨부 공문으로 리다이렉트"""
     doc = db.query(Document).filter(Document.id == doc_id).first()
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc:
         raise HTTPException(status_code=404, detail="날인된 공문을 찾을 수 없습니다.")
     if not doc.reception_number:
         raise HTTPException(status_code=404, detail="아직 접수되지 않은 공문입니다.")
-    return FileResponse(
-        doc.file_path,
-        filename=doc.original_filename or f"접수_{doc.reception_number}.pdf",
-    )
+    return _attachment_response(doc)
 
 
 @router.get("/{doc_id}/attachment")
@@ -343,9 +545,6 @@ async def download_attachment(
     current_user: User = Depends(get_current_user),
 ):
     doc = db.query(Document).filter(Document.id == doc_id).first()
-    if not doc or not doc.file_path or not os.path.exists(doc.file_path):
+    if not doc:
         raise HTTPException(status_code=404, detail="첨부파일을 찾을 수 없습니다.")
-    return FileResponse(
-        doc.file_path,
-        filename=doc.original_filename or "attachment",
-    )
+    return _attachment_response(doc)

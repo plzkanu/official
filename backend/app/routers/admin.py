@@ -5,6 +5,7 @@ from app.auth import get_current_user, require_roles
 from app.models import User, UserRole
 from app.schemas import DigitalStampResponse
 from app.services import stamp as stamp_service
+from app.utils.http_headers import content_disposition
 
 router = APIRouter(prefix="/api/admin", tags=["관리자"])
 
@@ -31,7 +32,7 @@ async def get_digital_stamp_image(_: User = Depends(get_current_user)):
     return Response(
         content=content,
         media_type="image/png",
-        headers={"Content-Disposition": f'inline; filename="{stamp_service.get_stamp_filename()}"'},
+        headers={"Content-Disposition": content_disposition("inline", stamp_service.get_stamp_filename())},
     )
 
 

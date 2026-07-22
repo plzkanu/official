@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,23 +10,49 @@ from app.config import settings
 from app.routers import admin, auth, departments, documents
 from app.seed import init_db
 
+logger = logging.getLogger("uvicorn.error")
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _static_root() -> Path:
+    raw = settings.static_dir.strip()
+    if not raw:
+        return Path()
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return (_BACKEND_ROOT / path).resolve()
+
 
 def _validate_production_settings() -> None:
     if not settings.is_production:
         return
+
+    problems: list[str] = []
     if settings.secret_key == "dev-secret-key-change-in-production":
-        raise RuntimeError("프로덕션 배포 시 SECRET_KEY 환경 변수를 설정해야 합니다.")
-    static_root = Path(settings.static_dir).resolve()
+        problems.append("SECRET_KEY(또는 Replit SESSION_SECRET) 미설정")
+    if not settings.database_url.strip():
+        problems.append("DATABASE_URL 미설정")
+    if not settings.supabase_service_role_key.strip():
+        problems.append("SUPABASE_SERVICE_ROLE_KEY 미설정")
+    else:
+        try:
+            from app.services import file_storage
+
+            file_storage.verify_connectivity()
+        except Exception as exc:
+            problems.append(f"Supabase Storage 연결 실패: {exc}")
+
+    static_root = _static_root()
     if not static_root.is_dir():
-        raise RuntimeError(f"프론트엔드 빌드 결과를 찾을 수 없습니다: {static_root}")
+        problems.append(f"frontend/dist 없음 ({static_root}) — npm run build 필요")
+
+    if problems:
+        raise RuntimeError("프로덕션 배포 설정 오류: " + " · ".join(problems))
 
 
 def _setup_static_routes(app: FastAPI) -> None:
-    static_dir = settings.static_dir.strip()
-    if not static_dir:
-        return
-
-    root = Path(static_dir).resolve()
+    root = _static_root()
     if not root.is_dir():
         return
 
@@ -48,8 +75,12 @@ def _setup_static_routes(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _validate_production_settings()
-    init_db()
+    try:
+        _validate_production_settings()
+        init_db()
+    except Exception:
+        logger.exception("Application startup failed")
+        raise
     yield
 
 
@@ -85,17 +116,30 @@ async def health():
 
     db_ok = False
     db_error: str | None = None
+    storage_ok = False
+    storage_error: str | None = None
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
             db_ok = True
     except Exception as exc:
         db_error = str(exc).split("\n")[0][:200]
+    if settings.supabase_service_role_key.strip():
+        try:
+            from app.services import file_storage
+
+            file_storage.verify_connectivity()
+            storage_ok = True
+        except Exception as exc:
+            storage_error = str(exc).split("\n")[0][:200]
+    status_value = "ok" if db_ok and storage_ok else "degraded"
     return {
-        "status": "ok" if db_ok else "degraded",
+        "status": status_value,
         "production": settings.is_production,
         "database": "connected" if db_ok else "error",
         "database_error": db_error,
+        "storage": "connected" if storage_ok else ("skipped" if not settings.supabase_service_role_key.strip() else "error"),
+        "storage_error": storage_error,
     }
 
 
