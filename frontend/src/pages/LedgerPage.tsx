@@ -113,8 +113,8 @@ export default function LedgerPage() {
           </div>
         </CardPanel>
 
-        <CardPanel title="접수 목록" description="날인본·첨부 확인이 가능합니다.">
-          <DocumentTable documents={documents} />
+        <CardPanel title="접수 목록" description="수취 확인된 공문은 날인본을, 접수 대기 중인 공문은 첨부 파일을 확인할 수 있습니다.">
+          <DocumentTable documents={documents} variant="ledger" />
         </CardPanel>
       </div>
     </div>

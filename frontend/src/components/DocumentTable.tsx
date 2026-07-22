@@ -41,13 +41,54 @@ function DocumentActions({
   showReceive,
   showActions,
   onReceive,
+  variant = 'default',
 }: {
   doc: Document;
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  variant?: 'default' | 'ledger';
 }) {
   if (!showActions) return null;
+
+  const isReceived = doc.status !== 'pending_reception';
+  const hasAttachment = Boolean(doc.original_filename);
+
+  if (variant === 'ledger') {
+    if (!hasAttachment) {
+      return <span className="text-xs text-slate-400">첨부파일 없음</span>;
+    }
+
+    if (isReceived) {
+      if (doc.has_receipt) {
+        return (
+          <button
+            type="button"
+            onClick={() => openPdf(`/api/documents/${doc.id}/attachment`)}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+          >
+            날인본
+          </button>
+        );
+      }
+      return <span className="text-xs text-slate-400">날인본 파일 없음</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          downloadFile(
+            `/api/documents/${doc.id}/attachment`,
+            doc.original_filename || 'attachment',
+          )
+        }
+        className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+      >
+        첨부
+      </button>
+    );
+  }
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -92,11 +133,13 @@ function DocumentCard({
   showReceive,
   showActions,
   onReceive,
+  variant = 'default',
 }: {
   doc: Document;
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  variant?: 'default' | 'ledger';
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -136,6 +179,7 @@ function DocumentCard({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            variant={variant}
           />
         </div>
       )}
@@ -148,11 +192,13 @@ export function DocumentTable({
   onReceive,
   showReceive = false,
   showActions = true,
+  variant = 'default',
 }: {
   documents: Document[];
   onReceive?: (doc: Document) => void;
   showReceive?: boolean;
   showActions?: boolean;
+  variant?: 'default' | 'ledger';
 }) {
   if (documents.length === 0) {
     return <p className="py-8 text-center text-sm text-slate-500">조회된 문서가 없습니다.</p>;
@@ -168,6 +214,7 @@ export function DocumentTable({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            variant={variant}
           />
         ))}
       </div>
@@ -219,6 +266,7 @@ export function DocumentTable({
                       showReceive={showReceive}
                       showActions={showActions}
                       onReceive={onReceive}
+                      variant={variant}
                     />
                   </td>
                 )}
