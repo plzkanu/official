@@ -35,6 +35,7 @@ export interface Document {
   deadline: string | null;
   memo: string | null;
   has_receipt: boolean;
+  attachment_available: boolean;
   created_at: string;
   updated_at: string;
 }

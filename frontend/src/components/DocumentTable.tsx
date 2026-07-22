@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { CHANNEL_LABELS, STATUS_LABELS, type Document, type DocumentStatus } from '../types';
 import { downloadFile, openPdf } from '../utils/download';
 
@@ -41,52 +42,82 @@ function DocumentActions({
   showReceive,
   showActions,
   onReceive,
+  onDelete,
+  showDelete = false,
   variant = 'default',
 }: {
   doc: Document;
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  onDelete?: (doc: Document) => void;
+  showDelete?: boolean;
   variant?: 'default' | 'ledger';
 }) {
   if (!showActions) return null;
 
   const isReceived = doc.status !== 'pending_reception';
-  const hasAttachment = Boolean(doc.original_filename);
+  const hasAttachment = doc.attachment_available;
+  const deleteButton =
+    showDelete && onDelete ? (
+      <button
+        type="button"
+        onClick={() => onDelete(doc)}
+        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50"
+      >
+        삭제
+      </button>
+    ) : null;
 
   if (variant === 'ledger') {
+    let attachmentAction: ReactNode;
+
     if (!hasAttachment) {
-      return <span className="text-xs text-slate-400">첨부파일 없음</span>;
+      attachmentAction = <span className="text-xs text-slate-400">첨부파일 없음</span>;
+    } else if (isReceived) {
+      attachmentAction = doc.has_receipt ? (
+        <button
+          type="button"
+          onClick={() =>
+            openPdf(`/api/documents/${doc.id}/attachment`).catch((error) => {
+              alert(error instanceof Error ? error.message : '문서 열기 실패');
+            })
+          }
+          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+        >
+          날인본
+        </button>
+      ) : (
+        <span className="text-xs text-slate-400">날인본 파일 없음</span>
+      );
+    } else {
+      attachmentAction = (
+        <button
+          type="button"
+          onClick={() =>
+            downloadFile(
+              `/api/documents/${doc.id}/attachment`,
+              doc.original_filename || 'attachment',
+            ).catch((error) => {
+              alert(error instanceof Error ? error.message : '다운로드 실패');
+            })
+          }
+          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
+        >
+          첨부
+        </button>
+      );
     }
 
-    if (isReceived) {
-      if (doc.has_receipt) {
-        return (
-          <button
-            type="button"
-            onClick={() => openPdf(`/api/documents/${doc.id}/attachment`)}
-            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
-          >
-            날인본
-          </button>
-        );
-      }
-      return <span className="text-xs text-slate-400">날인본 파일 없음</span>;
+    if (!deleteButton) {
+      return attachmentAction;
     }
 
     return (
-      <button
-        type="button"
-        onClick={() =>
-          downloadFile(
-            `/api/documents/${doc.id}/attachment`,
-            doc.original_filename || 'attachment',
-          )
-        }
-        className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
-      >
-        첨부
-      </button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {attachmentAction}
+        {deleteButton}
+      </div>
     );
   }
 
@@ -104,26 +135,33 @@ function DocumentActions({
       {doc.has_receipt && (
         <button
           type="button"
-          onClick={() => openPdf(`/api/documents/${doc.id}/attachment`)}
+          onClick={() =>
+            openPdf(`/api/documents/${doc.id}/attachment`).catch((error) => {
+              alert(error instanceof Error ? error.message : '문서 열기 실패');
+            })
+          }
           className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
         >
           날인본
         </button>
       )}
-      {doc.original_filename && (
+      {doc.attachment_available && (
         <button
           type="button"
           onClick={() =>
             downloadFile(
               `/api/documents/${doc.id}/attachment`,
               doc.original_filename || 'attachment',
-            )
+            ).catch((error) => {
+              alert(error instanceof Error ? error.message : '다운로드 실패');
+            })
           }
           className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-100"
         >
           {doc.has_receipt ? '다운로드' : '첨부'}
         </button>
       )}
+      {deleteButton}
     </div>
   );
 }
@@ -133,12 +171,16 @@ function DocumentCard({
   showReceive,
   showActions,
   onReceive,
+  onDelete,
+  showDelete = false,
   variant = 'default',
 }: {
   doc: Document;
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  onDelete?: (doc: Document) => void;
+  showDelete?: boolean;
   variant?: 'default' | 'ledger';
 }) {
   return (
@@ -179,6 +221,8 @@ function DocumentCard({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            onDelete={onDelete}
+            showDelete={showDelete}
             variant={variant}
           />
         </div>
@@ -190,14 +234,18 @@ function DocumentCard({
 export function DocumentTable({
   documents,
   onReceive,
+  onDelete,
   showReceive = false,
   showActions = true,
+  showDelete = false,
   variant = 'default',
 }: {
   documents: Document[];
   onReceive?: (doc: Document) => void;
+  onDelete?: (doc: Document) => void;
   showReceive?: boolean;
   showActions?: boolean;
+  showDelete?: boolean;
   variant?: 'default' | 'ledger';
 }) {
   if (documents.length === 0) {
@@ -214,6 +262,8 @@ export function DocumentTable({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            onDelete={onDelete}
+            showDelete={showDelete}
             variant={variant}
           />
         ))}
@@ -266,6 +316,8 @@ export function DocumentTable({
                       showReceive={showReceive}
                       showActions={showActions}
                       onReceive={onReceive}
+                      onDelete={onDelete}
+                      showDelete={showDelete}
                       variant={variant}
                     />
                   </td>

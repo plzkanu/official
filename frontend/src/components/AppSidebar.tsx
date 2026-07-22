@@ -77,7 +77,7 @@ export default function AppSidebar({ mobileOpen = false, onClose }: AppSidebarPr
       <div className="flex items-start justify-between border-b border-white/10 px-4 py-4">
         <div className="min-w-0 flex-1">
           <BrandLogo variant="sidebar" />
-          <p className="mt-3 px-1 text-[13px] text-white/60">공문접수 관리 시스템</p>
+          <p className="mt-3 text-center text-[13px] text-white/60">공문접수 관리 시스템</p>
         </div>
         <button
           type="button"

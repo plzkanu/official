@@ -126,6 +126,11 @@ export async function receiveDocument(
   return data;
 }
 
+export async function deleteDocument(docId: number) {
+  const { data } = await api.delete<{ message: string }>(`/documents/${docId}`);
+  return data;
+}
+
 export function getAttachmentUrl(docId: number) {
   return `/api/documents/${docId}/attachment`;
 }

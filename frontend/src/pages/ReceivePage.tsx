@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { getDepartments, getDocuments, getUsers, receiveDocument } from '../api/client';
+import { deleteDocument, getDepartments, getDocuments, getUsers, receiveDocument } from '../api/client';
 import { DocumentTable } from '../components/DocumentTable';
 import PageHeader, { CardPanel } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
 import type { Department, Document, User } from '../types';
 
 export default function ReceivePage() {
+  const { user } = useAuth();
   const [pendingDocs, setPendingDocs] = useState<Document[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
@@ -16,6 +18,8 @@ export default function ReceivePage() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const isAdmin = user?.role === 'admin';
 
   const fetchPending = () => {
     getDocuments({ status: 'pending_reception' }).then(setPendingDocs);
@@ -36,6 +40,12 @@ export default function ReceivePage() {
   }, [departmentId]);
 
   const openReceive = (doc: Document) => {
+    if (doc.original_filename && !doc.attachment_available) {
+      alert(
+        'Storage에 첨부파일이 없어 접수할 수 없습니다.\n관리자가 문서를 삭제한 뒤 다시 등록해 주세요.',
+      );
+      return;
+    }
     setSelectedDoc(doc);
     setDepartmentId('');
     setUserId('');
@@ -57,7 +67,7 @@ export default function ReceivePage() {
         deadline: deadline || undefined,
         memo: memo.trim() || undefined,
       });
-      const stamped = Boolean(selectedDoc.original_filename);
+      const stamped = selectedDoc.attachment_available;
       setInfo(
         stamped
           ? `접수 완료 — 접수번호 ${result.reception_number}. 첨부 공문에 접수도장이 날인되었습니다.`
@@ -65,10 +75,39 @@ export default function ReceivePage() {
       );
       setSelectedDoc(null);
       fetchPending();
-    } catch {
-      setError('접수 처리 중 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        '접수 처리 중 오류가 발생했습니다.';
+      setError(typeof msg === 'string' ? msg : '접수 처리 중 오류가 발생했습니다.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (doc: Document) => {
+    const label = doc.title;
+    if (
+      !confirm(
+        `"${label}" 공문을 삭제하시겠습니까?\n첨부·날인본 파일을 포함해 복구할 수 없습니다.`,
+      )
+    ) {
+      return;
+    }
+
+    setInfo('');
+    try {
+      await deleteDocument(doc.id);
+      setInfo(`"${label}" 공문이 삭제되었습니다.`);
+      if (selectedDoc?.id === doc.id) {
+        setSelectedDoc(null);
+      }
+      fetchPending();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        '삭제 중 오류가 발생했습니다.';
+      alert(typeof msg === 'string' ? msg : '삭제 중 오류가 발생했습니다.');
     }
   };
 
@@ -85,7 +124,13 @@ export default function ReceivePage() {
         title="수취 확인 대기 목록"
         description={`${pendingDocs.length.toLocaleString('ko-KR')}건 대기 중`}
       >
-        <DocumentTable documents={pendingDocs} showReceive onReceive={openReceive} />
+        <DocumentTable
+          documents={pendingDocs}
+          showReceive
+          onReceive={openReceive}
+          showDelete={isAdmin}
+          onDelete={handleDelete}
+        />
       </CardPanel>
 
       {selectedDoc && (

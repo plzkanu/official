@@ -6,11 +6,11 @@ interface BrandLogoProps {
 export default function BrandLogo({ variant = 'default', className = '' }: BrandLogoProps) {
   if (variant === 'sidebar') {
     return (
-      <div className={`rounded-lg bg-white px-3 py-2.5 ${className}`}>
+      <div className={`flex justify-center rounded-lg bg-white px-3 py-2.5 ${className}`}>
         <img
           src="/soosan-logo.png"
           alt="SOOSAN"
-          className="h-7 w-auto object-contain object-left"
+          className="h-7 w-auto object-contain"
           draggable={false}
         />
       </div>

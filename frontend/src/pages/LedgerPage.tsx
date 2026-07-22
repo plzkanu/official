@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getDepartments, getDocuments } from '../api/client';
+import { deleteDocument, getDepartments, getDocuments } from '../api/client';
 import { DocumentTable } from '../components/DocumentTable';
 import PageHeader, { CardPanel } from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
 import type { Channel, Department, Document, DocumentStatus } from '../types';
 import { CHANNEL_LABELS, STATUS_LABELS } from '../types';
 
 export default function LedgerPage() {
+  const { user } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [keyword, setKeyword] = useState('');
@@ -14,6 +16,10 @@ export default function LedgerPage() {
   const [departmentId, setDepartmentId] = useState('');
   const [deadlineSoon, setDeadlineSoon] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [info, setInfo] = useState('');
+  const [error, setError] = useState('');
+
+  const isAdmin = user?.role === 'admin';
 
   const fetchDocs = async () => {
     setIsLoading(true);
@@ -36,6 +42,30 @@ export default function LedgerPage() {
     fetchDocs();
   }, []);
 
+  const handleDelete = async (doc: Document) => {
+    const label = doc.reception_number || doc.title;
+    const action =
+      doc.status === 'pending_reception'
+        ? `"${label}" 접수 대기 공문을 삭제하시겠습니까?`
+        : `접수번호 ${label} 공문을 삭제하시겠습니까?`;
+    if (!confirm(`${action}\n첨부·날인본 파일을 포함해 복구할 수 없습니다.`)) {
+      return;
+    }
+
+    setError('');
+    setInfo('');
+    try {
+      await deleteDocument(doc.id);
+      setInfo(`접수번호 ${label} 공문이 삭제되었습니다.`);
+      fetchDocs();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        '삭제 중 오류가 발생했습니다.';
+      setError(typeof msg === 'string' ? msg : '삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   const statusFilterOptions = (
     Object.entries(STATUS_LABELS) as [DocumentStatus, string][]
   ).filter(([key]) => key === 'pending_reception' || key === 'received');
@@ -46,6 +76,9 @@ export default function LedgerPage() {
         title="접수 대장"
         description="접수된 공문을 검색·조회합니다."
       />
+
+      {info && <div className="banner-success mb-4">{info}</div>}
+      {error && <div className="banner-error mb-4">{error}</div>}
 
       <div className="space-y-6">
         <CardPanel title="검색 조건" description="키워드, 상태, 채널, 부서로 필터링할 수 있습니다.">
@@ -114,7 +147,12 @@ export default function LedgerPage() {
         </CardPanel>
 
         <CardPanel title="접수 목록" description="수취 확인된 공문은 날인본을, 접수 대기 중인 공문은 첨부 파일을 확인할 수 있습니다.">
-          <DocumentTable documents={documents} variant="ledger" />
+          <DocumentTable
+            documents={documents}
+            variant="ledger"
+            showDelete={isAdmin}
+            onDelete={handleDelete}
+          />
         </CardPanel>
       </div>
     </div>
