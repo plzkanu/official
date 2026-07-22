@@ -40,8 +40,11 @@ export default function RegisterPage() {
       setInputDate('');
       setMemo('');
       setFile(null);
-    } catch {
-      setError('등록 중 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        '등록 중 오류가 발생했습니다.';
+      setError(typeof msg === 'string' ? msg : '등록 중 오류가 발생했습니다.');
     } finally {
       setIsSaving(false);
     }

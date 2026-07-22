@@ -42,7 +42,9 @@ function DocumentActions({
   showReceive,
   showActions,
   onReceive,
+  onEdit,
   onDelete,
+  currentUserId,
   showDelete = false,
   variant = 'default',
 }: {
@@ -50,7 +52,9 @@ function DocumentActions({
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  onEdit?: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
+  currentUserId?: number;
   showDelete?: boolean;
   variant?: 'default' | 'ledger';
 }) {
@@ -58,6 +62,20 @@ function DocumentActions({
 
   const isReceived = doc.status !== 'pending_reception';
   const hasAttachment = doc.attachment_available;
+  const canEdit =
+    doc.status === 'pending_reception' &&
+    currentUserId != null &&
+    doc.registered_by.id === currentUserId &&
+    Boolean(onEdit);
+  const editButton = canEdit ? (
+    <button
+      type="button"
+      onClick={() => onEdit!(doc)}
+      className="rounded-lg border border-[#004b87]/30 px-2.5 py-1 text-xs text-[#004b87] hover:bg-[#004b87]/5"
+    >
+      수정
+    </button>
+  ) : null;
   const deleteButton =
     showDelete && onDelete ? (
       <button
@@ -109,13 +127,14 @@ function DocumentActions({
       );
     }
 
-    if (!deleteButton) {
+    if (!editButton && !deleteButton) {
       return attachmentAction;
     }
 
     return (
       <div className="flex flex-wrap items-center gap-1.5">
         {attachmentAction}
+        {editButton}
         {deleteButton}
       </div>
     );
@@ -162,6 +181,7 @@ function DocumentActions({
         </button>
       )}
       {deleteButton}
+      {editButton}
     </div>
   );
 }
@@ -171,7 +191,9 @@ function DocumentCard({
   showReceive,
   showActions,
   onReceive,
+  onEdit,
   onDelete,
+  currentUserId,
   showDelete = false,
   variant = 'default',
 }: {
@@ -179,7 +201,9 @@ function DocumentCard({
   showReceive: boolean;
   showActions: boolean;
   onReceive?: (doc: Document) => void;
+  onEdit?: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
+  currentUserId?: number;
   showDelete?: boolean;
   variant?: 'default' | 'ledger';
 }) {
@@ -221,7 +245,9 @@ function DocumentCard({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            onEdit={onEdit}
             onDelete={onDelete}
+            currentUserId={currentUserId}
             showDelete={showDelete}
             variant={variant}
           />
@@ -234,7 +260,9 @@ function DocumentCard({
 export function DocumentTable({
   documents,
   onReceive,
+  onEdit,
   onDelete,
+  currentUserId,
   showReceive = false,
   showActions = true,
   showDelete = false,
@@ -242,7 +270,9 @@ export function DocumentTable({
 }: {
   documents: Document[];
   onReceive?: (doc: Document) => void;
+  onEdit?: (doc: Document) => void;
   onDelete?: (doc: Document) => void;
+  currentUserId?: number;
   showReceive?: boolean;
   showActions?: boolean;
   showDelete?: boolean;
@@ -262,7 +292,9 @@ export function DocumentTable({
             showReceive={showReceive}
             showActions={showActions}
             onReceive={onReceive}
+            onEdit={onEdit}
             onDelete={onDelete}
+            currentUserId={currentUserId}
             showDelete={showDelete}
             variant={variant}
           />
@@ -316,7 +348,9 @@ export function DocumentTable({
                       showReceive={showReceive}
                       showActions={showActions}
                       onReceive={onReceive}
+                      onEdit={onEdit}
                       onDelete={onDelete}
+                      currentUserId={currentUserId}
                       showDelete={showDelete}
                       variant={variant}
                     />

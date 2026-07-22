@@ -126,6 +126,13 @@ export async function receiveDocument(
   return data;
 }
 
+export async function updateDocument(docId: number, formData: FormData) {
+  const { data } = await api.patch<Document>(`/documents/${docId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
 export async function deleteDocument(docId: number) {
   const { data } = await api.delete<{ message: string }>(`/documents/${docId}`);
   return data;
